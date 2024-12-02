@@ -80,12 +80,13 @@ model = AutoModelForCausalLM.from_pretrained(
     device_map="auto",
     torch_dtype="float16",
     quantization_config=bnb_config, 
+    token="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"
 )
 
 model.config.use_cache = False
 model.config.pretraining_tp = 1
 
-tokenizer = AutoTokenizer.from_pretrained(base_model_name)
+tokenizer = AutoTokenizer.from_pretrained(base_model_name, token="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")
 tokenizer.pad_token_id = tokenizer.eos_token_id
 
 def predict(test_dataset, model, tokenizer):
