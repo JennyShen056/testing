@@ -27,9 +27,13 @@ from sklearn.metrics import (accuracy_score,
 
 dataset = load_dataset("Jennny/spolier_classification") 
 
-train_data = dataset['train']
-eval_data = dataset['validation']
-test_data = dataset['test']
+# train_data = dataset['train']
+# eval_data = dataset['validation']
+# test_data = dataset['test']
+
+train_data = dataset['train'].shuffle(seed=42).select(range(1000))
+eval_data = dataset['validation'].shuffle(seed=42).select(range(1000))
+test_data = dataset['test'].shuffle(seed=42).select(range(1000))
 
 # Define the prompt generation functions
 def generate_prompt(data_point):
@@ -157,8 +161,8 @@ peft_config = LoraConfig(
 training_arguments = TrainingArguments(
     output_dir=output_dir,
     num_train_epochs=1,
-    per_device_train_batch_size=1,
-    gradient_accumulation_steps=8,
+    per_device_train_batch_size=8, 
+    gradient_accumulation_steps=4,
     gradient_checkpointing=True,
     optim="paged_adamw_32bit",
     logging_steps=1,
