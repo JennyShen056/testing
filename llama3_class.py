@@ -77,11 +77,11 @@ bnb_config = BitsAndBytesConfig(
 
 model = AutoModelForCausalLM.from_pretrained(
     base_model_name,
-    device_map="auto",
+    # device_map="auto",
     torch_dtype="float16",
     quantization_config=bnb_config, 
     token="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"
-)
+).to("cuda")
 
 model.config.use_cache = False
 model.config.pretraining_tp = 1
