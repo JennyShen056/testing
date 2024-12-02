@@ -25,6 +25,21 @@ from sklearn.metrics import (accuracy_score,
                              classification_report, 
                              confusion_matrix)
 
+@dataclass
+class ScriptArguments:
+    """
+    These arguments vary depending on how many GPUs you have, what their capacity and features are, and what size model you want to train.
+    """
+
+    deepspeed: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Path to deepspeed config if using deepspeed. You may need this if the model that you want to train doesn't fit on a single GPU."
+        },
+    )
+parser = HfArgumentParser(ScriptArguments)
+script_args = parser.parse_args_into_dataclasses()[0]
+
 dataset = load_dataset("Jennny/spolier_classification") 
 
 # train_data = dataset['train']
@@ -38,13 +53,13 @@ test_data = dataset['test'].shuffle(seed=42).select(range(1000))
 # Define the prompt generation functions
 def generate_prompt(data_point):
     return f"""
-            Classify the text as having a spoiler or not.
+            Classify the text as having a spoiler or not (true/false).
 text: {data_point["plain_text"]}
 label: {data_point["has_spoiler"]}""".strip()
 
 def generate_test_prompt(data_point):
     return f"""
-            Classify the text as having a spoiler or not.
+            Classify the text as having a spoiler or not (true/false).
 text: {data_point["plain_text"]}
 label: """.strip()
 
@@ -165,6 +180,7 @@ training_arguments = TrainingArguments(
     per_device_train_batch_size=8, 
     gradient_accumulation_steps=4,
     gradient_checkpointing=True,
+    deepspeed=script_args.deepspeed,
     optim="paged_adamw_32bit",
     logging_steps=1,
     learning_rate=2e-4,
