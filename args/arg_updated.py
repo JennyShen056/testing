@@ -38,7 +38,7 @@ def even_chunk(data, chunk_size=10):
 
 # reward based search
 class ARGS:
-    def __init__(self, llm_path, rm_path, llm_dev="cuda:0,1", rm_dev="cuda:2,3", torch_dtype=torch.float16):
+    def __init__(self, llm_path, rm_path, llm_dev="cuda:0,1,2,3", rm_dev="cuda:4,5,6,7", torch_dtype=torch.float16):
         self.llm_dev = llm_dev
         self.rm_dev = rm_dev
         print("Loading LLM...")
