@@ -16,6 +16,7 @@ import torch.nn as nn
 import transformers
 from datasets import load_dataset
 from peft import LoraConfig, PeftConfig
+from accelerate import Accelerator
 from trl import SFTTrainer
 from transformers import (AutoModelForCausalLM, 
                           AutoTokenizer, 
@@ -87,10 +88,14 @@ bnb_config = BitsAndBytesConfig(
     bnb_4bit_use_double_quant=True,
 )
 
+def get_current_device() -> int:
+    """Get the current device. For GPU we return the local process index to enable multiple GPU training."""
+    return Accelerator().local_process_index if torch.cuda.is_available() else "cpu"
+
 def get_kbit_device_map() -> Dict[str, int] | None:
     """Useful for running inference with quantized models by setting `device_map=get_peft_device_map()`"""
     return {"": get_current_device()} if torch.cuda.is_available() else None
-    
+
 model = AutoModelForCausalLM.from_pretrained(
     base_model_name,
     quantization_config=bnb_config,
