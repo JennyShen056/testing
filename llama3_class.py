@@ -123,7 +123,8 @@ def predict(test_dataset, model, tokenizer):
         pipe = pipeline(task="text-generation", 
                         model=model, 
                         tokenizer=tokenizer,
-                        device_map="auto",
+                        device_map=get_kbit_device_map(),
+                        # device_map="auto",
                         max_new_tokens=2, 
                         temperature=0.1)
         
