@@ -1,7 +1,6 @@
 import wandb
 run = wandb.init(
-    project='Spoiler Classification', 
-    job_type="training", 
+    project='Spoiler Classification', mode="online", job_type="training", 
 )
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Union
@@ -16,7 +15,6 @@ import torch.nn as nn
 import transformers
 from datasets import load_dataset
 from peft import LoraConfig, PeftConfig
-from accelerate import Accelerator
 from trl import SFTTrainer
 from transformers import (AutoModelForCausalLM, 
                           AutoTokenizer, 
@@ -29,24 +27,25 @@ from sklearn.metrics import (accuracy_score,
                              classification_report, 
                              confusion_matrix)
 
+dataset = load_dataset("Jennny/spolier_classification") 
+
+
 # Set torch dtype and attention implementation
-if torch.cuda.get_device_capability()[0] >= 8:
-    # !pip install -qqq flash-attn
+if torch.cuda.get_device_capability()[0] > 8:
+    # pip install -qqq flash-attn
     torch_dtype = torch.bfloat16
     attn_implementation = "flash_attention_2"
 else:
     torch_dtype = torch.float16
     attn_implementation = "eager"
 
-dataset = load_dataset("Jennny/spolier_classification") 
-
 # train_data = dataset['train']
 # eval_data = dataset['validation']
 # test_data = dataset['test']
 
-train_data = dataset['train'].shuffle(seed=42).select(range(50))
-eval_data = dataset['validation'].shuffle(seed=42).select(range(50))
-test_data = dataset['test'].shuffle(seed=42).select(range(50))
+train_data = dataset['train'].shuffle(seed=42).select(range(8000))
+eval_data = dataset['validation'].shuffle(seed=42).select(range(1000))
+test_data = dataset['test'].shuffle(seed=42).select(range(1000))
 
 # Define the prompt generation functions
 def generate_prompt(data_point):
@@ -88,25 +87,17 @@ bnb_config = BitsAndBytesConfig(
     bnb_4bit_use_double_quant=True,
 )
 
-def get_current_device() -> int:
-    """Get the current device. For GPU we return the local process index to enable multiple GPU training."""
-    return Accelerator().local_process_index if torch.cuda.is_available() else "cpu"
-
-def get_kbit_device_map() -> Dict[str, int] | None:
-    """Useful for running inference with quantized models by setting `device_map=get_peft_device_map()`"""
-    return {"": get_current_device()} if torch.cuda.is_available() else None
-
+# Load model
 model = AutoModelForCausalLM.from_pretrained(
     base_model_name,
     quantization_config=bnb_config,
-    # device_map="auto",
-    device_map=get_kbit_device_map(),
+    device_map={"": 0},  # Force everything to cuda:0
     attn_implementation=attn_implementation,
     token="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"
 )
 
-model.config.use_cache = False
-model.config.pretraining_tp = 1
+# model.config.use_cache = False
+# model.config.pretraining_tp = 1
 
 tokenizer = AutoTokenizer.from_pretrained(base_model_name, token="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")
 tokenizer.pad_token_id = tokenizer.eos_token_id
@@ -123,8 +114,7 @@ def predict(test_dataset, model, tokenizer):
         pipe = pipeline(task="text-generation", 
                         model=model, 
                         tokenizer=tokenizer,
-                        device_map=get_kbit_device_map(),
-                        # device_map="auto",
+                        device_map={"": 0},  # Force everything to cuda:0
                         max_new_tokens=2, 
                         temperature=0.1)
         
@@ -191,7 +181,6 @@ def evaluate(y_true, y_pred):
 
 evaluate(y_true, y_pred)
 
-# LoRA configuration and training remain mostly the same
 def find_all_linear_names(model):
     cls = bnb.nn.Linear4bit
     lora_module_names = set()
@@ -207,7 +196,6 @@ modules = find_all_linear_names(model)
 
 output_dir="./models/llama-3-spoiler-classifier"
 
-# LoRA config
 peft_config = LoraConfig(
     r=16,
     lora_alpha=32,
@@ -220,13 +208,14 @@ peft_config = LoraConfig(
 training_arguments = TrainingArguments(
     output_dir=output_dir,
     num_train_epochs=1,
-    per_device_train_batch_size=1,
-    per_device_eval_batch_size=1,
-    gradient_accumulation_steps=16,
+    per_device_train_batch_size=2,
+    per_device_eval_batch_size=2,
+    gradient_accumulation_steps=4,
     gradient_checkpointing=True,
+    # deepspeed=script_args.deepspeed,
     optim="paged_adamw_32bit",
-    logging_strategy="steps",
     logging_steps=10,
+    logging_strategy="steps",
     learning_rate=2e-4,
     weight_decay=0.001,
     fp16=True,
@@ -238,7 +227,7 @@ training_arguments = TrainingArguments(
     lr_scheduler_type="cosine",
     report_to="wandb",
     eval_strategy="steps",
-    eval_steps=0.2
+    eval_steps=0.2,
 )
 
 trainer = SFTTrainer(
@@ -256,14 +245,23 @@ trainer = SFTTrainer(
         "append_concat_token": False,
     }
 )
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+model = model.to(device)
+
 
 trainer.train()
 
 wandb.finish()
 model.config.use_cache = True
 
+from huggingface_hub import login
+
+token = "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"
+login(token=token)
+
+# Push to Hugging Face Hub
 trainer.save_model("llama-3-spoiler-classifier")
-trainer.push_to_hub("llama-3-spoiler-classifier")
+tokenizer.save_pretrained("llama-3-spoiler-classifier")
 
 # Final evaluation
 y_pred = predict(test_data, model, tokenizer)

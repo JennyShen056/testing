@@ -1,0 +1,85 @@
+{
+  "os": "Linux-5.15.0-122-generic-x86_64-with-glibc2.35",
+  "python": "3.10.15",
+  "startedAt": "2024-12-03T08:15:21.237181Z",
+  "program": "/home/jshen/testing/acc.py",
+  "codePath": "acc.py",
+  "git": {
+    "remote": "https://github.com/JennyShen056/testing.git",
+    "commit": "53cde434e4e90eaad79bb6260be4e56b64fbdd28"
+  },
+  "email": "jennyshen056@gmail.com",
+  "root": "/home/jshen/testing",
+  "host": "chai",
+  "username": "jshen",
+  "executable": "/home/jshen/miniconda3/envs/handbook/bin/python",
+  "codePathLocal": "acc.py",
+  "cpu_count": 128,
+  "cpu_count_logical": 255,
+  "gpu": "NVIDIA L40S",
+  "gpu_count": 8,
+  "disk": {
+    "/": {
+      "total": "1876350566400",
+      "used": "1766382227456"
+    }
+  },
+  "memory": {
+    "total": "540818784256"
+  },
+  "cpu": {
+    "count": 128,
+    "countLogical": 255
+  },
+  "gpu_nvidia": [
+    {
+      "name": "NVIDIA L40S",
+      "memoryTotal": "48305799168",
+      "cudaCores": 18176,
+      "architecture": "Ada"
+    },
+    {
+      "name": "NVIDIA L40S",
+      "memoryTotal": "48305799168",
+      "cudaCores": 18176,
+      "architecture": "Ada"
+    },
+    {
+      "name": "NVIDIA L40S",
+      "memoryTotal": "48305799168",
+      "cudaCores": 18176,
+      "architecture": "Ada"
+    },
+    {
+      "name": "NVIDIA L40S",
+      "memoryTotal": "48305799168",
+      "cudaCores": 18176,
+      "architecture": "Ada"
+    },
+    {
+      "name": "NVIDIA L40S",
+      "memoryTotal": "48305799168",
+      "cudaCores": 18176,
+      "architecture": "Ada"
+    },
+    {
+      "name": "NVIDIA L40S",
+      "memoryTotal": "48305799168",
+      "cudaCores": 18176,
+      "architecture": "Ada"
+    },
+    {
+      "name": "NVIDIA L40S",
+      "memoryTotal": "48305799168",
+      "cudaCores": 18176,
+      "architecture": "Ada"
+    },
+    {
+      "name": "NVIDIA L40S",
+      "memoryTotal": "48305799168",
+      "cudaCores": 18176,
+      "architecture": "Ada"
+    }
+  ],
+  "cudaVersion": "12.4"
+}
