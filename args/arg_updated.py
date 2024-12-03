@@ -42,8 +42,8 @@ class ARGS:
         self.llm_dev = llm_dev
         self.rm_dev = rm_dev
         print("Loading LLM...")
-        self.LLM = AutoModelForCausalLM.from_pretrained(llm_path, torch_dtype=torch_dtype).to(self.llm_dev)
-        # self.LLM = AutoModelForCausalLM.from_pretrained(llm_path, torch_dtype=torch_dtype, device_map="auto")
+        # self.LLM = AutoModelForCausalLM.from_pretrained(llm_path, torch_dtype=torch_dtype).to(self.llm_dev)
+        self.LLM = AutoModelForCausalLM.from_pretrained(llm_path, torch_dtype=torch_dtype, device_map="auto")
         self.LLM.eval()
         
         print(f"Loading tokenizer...")
@@ -51,8 +51,8 @@ class ARGS:
         self.tokenizer.pad_token = self.tokenizer.eos_token
         
         print("Loading RM...")
-        self.RM = AutoModelForSequenceClassification.from_pretrained(rm_path, torch_dtype=torch_dtype).to(self.rm_dev)
-        # self.RM = AutoModelForSequenceClassification.from_pretrained(rm_path, torch_dtype=torch_dtype, device_map="auto")
+        # self.RM = AutoModelForSequenceClassification.from_pretrained(rm_path, torch_dtype=torch_dtype).to(self.rm_dev)
+        self.RM = AutoModelForSequenceClassification.from_pretrained(rm_path, torch_dtype=torch_dtype, device_map="auto")
         self.RM.eval()
         self.rm_tokenizer = AutoTokenizer.from_pretrained(rm_path)
         self.rm_tokenizer.pad_token = self.rm_tokenizer.eos_token
