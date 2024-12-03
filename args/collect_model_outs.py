@@ -15,8 +15,8 @@ parser.add_argument("--rm", type=str)
 parser.add_argument("--llm", type=str)
 parser.add_argument("--max_new_token", type=int, default=128)
 
-parser.add_argument("--llm_gpu", type=str, default="cuda:0,1,2,3")
-parser.add_argument("--rm_gpu", type=str, default="cuda:4,5,6,7")
+parser.add_argument("--llm_gpu", type=str, default="cuda:0")
+parser.add_argument("--rm_gpu", type=str, default="cuda:1")
 parser.add_argument("--recover", action='store_true', default = False)
 
 parser.add_argument("--config", type=str)

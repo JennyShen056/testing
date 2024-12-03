@@ -38,11 +38,12 @@ def even_chunk(data, chunk_size=10):
 
 # reward based search
 class ARGS:
-    def __init__(self, llm_path, rm_path, llm_dev="cuda:0,1,2,3", rm_dev="cuda:4,5,6,7", torch_dtype=torch.float16):
+    def __init__(self, llm_path, rm_path, llm_dev="cuda:0", rm_dev="cuda:1", torch_dtype=torch.float16):
         self.llm_dev = llm_dev
         self.rm_dev = rm_dev
         print("Loading LLM...")
-        self.LLM = AutoModelForCausalLM.from_pretrained(llm_path, torch_dtype=torch_dtype).to(self.llm_dev)
+        # self.LLM = AutoModelForCausalLM.from_pretrained(llm_path, torch_dtype=torch_dtype).to(self.llm_dev)
+        self.LLM = AutoModelForCausalLM.from_pretrained(llm_path, torch_dtype=torch_dtype, device_map="balanced")
         self.LLM.eval()
         
         print(f"Loading tokenizer...")
@@ -50,7 +51,8 @@ class ARGS:
         self.tokenizer.pad_token = self.tokenizer.eos_token
         
         print("Loading RM...")
-        self.RM = AutoModelForSequenceClassification.from_pretrained(rm_path, torch_dtype=torch_dtype).to(self.rm_dev)
+        # self.RM = AutoModelForSequenceClassification.from_pretrained(rm_path, torch_dtype=torch_dtype).to(self.rm_dev)
+        self.RM = AutoModelForSequenceClassification.from_pretrained(rm_path, torch_dtype=torch_dtype, device_map="balanced")
         self.RM.eval()
         self.rm_tokenizer = AutoTokenizer.from_pretrained(rm_path)
         self.rm_tokenizer.pad_token = self.rm_tokenizer.eos_token
@@ -58,11 +60,15 @@ class ARGS:
         
     def get_input_ids(self, prompt: str) -> torch.Tensor:
         # tokens = self.tokenizer(prompt, return_tensors="pt").input_ids.to(self.llm_dev)
+        # input_text = self.tokenizer.apply_chat_template(
+        #                 prompt, add_generation_prompt=True, return_tensors="pt"
+        #             ).to(self.llm_dev)
+        # return input_text
         input_text = self.tokenizer.apply_chat_template(
                         prompt, add_generation_prompt=True, return_tensors="pt"
-                    ).to(self.llm_dev)
+                    )
         return input_text
-    
+
     def tokens_to_text(self, tokens: torch.Tensor) -> List[str]:
         return self.tokenizer.batch_decode(tokens, skip_special_tokens=True)
     
@@ -140,7 +146,8 @@ class ARGS:
 
         # Evaluate with RM
         rm_out = self.RM(**rm_inputs)
-        rewards = rm_out.logits.flatten().to(self.llm_dev)
+        # rewards = rm_out.logits.flatten().to(self.llm_dev)
+        rewards = rm_out.logits.flatten()
 
         if debug: print(f"{rewards.shape=}")
 
