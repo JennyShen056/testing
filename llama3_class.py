@@ -56,13 +56,13 @@ test_data = dataset['test'].shuffle(seed=42).select(range(50))
 # Define the prompt generation functions
 def generate_prompt(data_point):
     return f"""
-            Does the following text contain a spoiler? Respond only with "true" or "false".
+            Classify whether the following text contains a spoiler, respond ONLY with "true" or "false".
 text: {data_point["plain_text"]}
 label: {data_point["has_spoiler"]}""".strip()
 
 def generate_test_prompt(data_point):
     return f"""
-            Does the following text contain a spoiler? Respond only with "true" or "false".
+            Classify whether the following text contains a spoiler, respond ONLY with "true" or "false".
 text: {data_point["plain_text"]}
 label: """.strip()
 
@@ -213,7 +213,7 @@ peft_config = LoraConfig(
 training_arguments = TrainingArguments(
     output_dir=output_dir,
     num_train_epochs=1,
-    per_device_train_batch_size=4, 
+    per_device_train_batch_size=1, 
     gradient_accumulation_steps=16,
     gradient_checkpointing=True,
     deepspeed=script_args.deepspeed,
