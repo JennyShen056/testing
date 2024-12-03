@@ -3,7 +3,7 @@ run = wandb.init(
     project='Spoiler Classification', 
     job_type="training", 
 )
-
+from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 import os
