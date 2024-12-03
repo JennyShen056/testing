@@ -56,13 +56,13 @@ test_data = dataset['test'].shuffle(seed=42).select(range(50))
 # Define the prompt generation functions
 def generate_prompt(data_point):
     return f"""
-            Classify whether the following text contains a spoiler, respond ONLY with "true" or "false".
+            Does the following text contain a spoiler? Respond only with "true" or "false".
 text: {data_point["plain_text"]}
 label: {data_point["has_spoiler"]}""".strip()
 
 def generate_test_prompt(data_point):
     return f"""
-            Classify whether the following text contains a spoiler, respond ONLY with "true" or "false".
+            Does the following text contain a spoiler? Respond only with "true" or "false".
 text: {data_point["plain_text"]}
 label: """.strip()
 
