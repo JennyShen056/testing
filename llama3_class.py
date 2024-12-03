@@ -30,6 +30,7 @@ from sklearn.metrics import (accuracy_score,
 
 # Set torch dtype and attention implementation
 if torch.cuda.get_device_capability()[0] >= 8:
+    !pip install -qqq flash-attn
     torch_dtype = torch.bfloat16
     attn_implementation = "flash_attention_2"
 else:
