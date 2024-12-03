@@ -87,10 +87,15 @@ bnb_config = BitsAndBytesConfig(
     bnb_4bit_use_double_quant=True,
 )
 
+def get_kbit_device_map() -> Dict[str, int] | None:
+    """Useful for running inference with quantized models by setting `device_map=get_peft_device_map()`"""
+    return {"": get_current_device()} if torch.cuda.is_available() else None
+    
 model = AutoModelForCausalLM.from_pretrained(
     base_model_name,
     quantization_config=bnb_config,
-    device_map="auto",
+    # device_map="auto",
+    device_map=get_kbit_device_map(),
     attn_implementation=attn_implementation,
     token="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"
 )
