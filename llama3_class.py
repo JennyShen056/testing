@@ -95,12 +95,11 @@ bnb_config = BitsAndBytesConfig(
 
 model = AutoModelForCausalLM.from_pretrained(
     base_model_name,
-    device_map="auto",
     torch_dtype="float16",
     attn_implementation="flash_attention_2",
     quantization_config=bnb_config, 
     token="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"
-).to("cuda")
+)
 
 model.config.use_cache = False
 model.config.pretraining_tp = 1
@@ -167,7 +166,7 @@ def predict(test_dataset, model, tokenizer):
     return y_pred
 
 # Prediction and evaluation
-y_pred = predict(test_data, model.to("cuda"), tokenizer)
+y_pred = predict(test_data, model, tokenizer)
 
 def evaluate(y_true, y_pred):
     # CHANGE: Simplified for binary classification
