@@ -90,7 +90,7 @@ model = AutoModelForCausalLM.from_pretrained(
     base_model_name,
     quantization_config=bnb_config,
     device_map="auto",
-    attn_implementation=attn_implementation
+    attn_implementation=attn_implementation,
     token="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"
 )
 
