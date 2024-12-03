@@ -20,8 +20,6 @@ parser.add_argument("--rm_gpu", type=str, default="cuda:1")
 parser.add_argument("--recover", action='store_true', default = False)
 
 parser.add_argument("--config", type=str)
-parser.add_argument("--gpu_list", type=str, default="0,1,2,3,4,5,6,7", help="List of GPUs to use")
-
 parser.add_argument("--out_file", type=str)
 
 args = parser.parse_args()
@@ -113,13 +111,7 @@ truncated_ds = test_ds[0:end_idx]
 print(f"{len(truncated_ds)=}")
 
 print(f"[INFO]: Loading models ({args.llm=}, {args.rm=})")
-# search = ARGS(llm_path=args.llm, rm_path=args.rm, llm_dev=args.llm_gpu, rm_dev=args.rm_gpu)
-search = ARGS(
-    llm_path=args.llm, 
-    rm_path=args.rm, 
-    llm_dev=[f"cuda:{gpu}" for gpu in args.gpu_list.split(',')[:4]],  # First four GPUs for models
-    rm_dev=[f"cuda:{gpu}" for gpu in args.gpu_list.split(',')[4:8]]   # Next four GPUs for reward model
-)
+search = ARGS(llm_path=args.llm, rm_path=args.rm, llm_dev=args.llm_gpu, rm_dev=args.rm_gpu)
 print(f"[INFO]: Done")
 
 
