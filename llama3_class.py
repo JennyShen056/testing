@@ -167,7 +167,7 @@ def predict(test_dataset, model, tokenizer):
     return y_pred
 
 # Prediction and evaluation
-y_pred = predict(test_data, model, tokenizer)
+y_pred = predict(test_data, model.to("cuda"), tokenizer)
 
 def evaluate(y_true, y_pred):
     # CHANGE: Simplified for binary classification
