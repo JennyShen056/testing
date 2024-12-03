@@ -28,20 +28,13 @@ from sklearn.metrics import (accuracy_score,
                              classification_report, 
                              confusion_matrix)
 
-@dataclass
-class ScriptArguments:
-    """
-    These arguments vary depending on how many GPUs you have, what their capacity and features are, and what size model you want to train.
-    """
-
-    deepspeed: Optional[str] = field(
-        default=None,
-        metadata={
-            "help": "Path to deepspeed config if using deepspeed. You may need this if the model that you want to train doesn't fit on a single GPU."
-        },
-    )
-parser = HfArgumentParser(ScriptArguments)
-script_args = parser.parse_args_into_dataclasses()[0]
+# Set torch dtype and attention implementation
+if torch.cuda.get_device_capability()[0] >= 8:
+    torch_dtype = torch.bfloat16
+    attn_implementation = "flash_attention_2"
+else:
+    torch_dtype = torch.float16
+    attn_implementation = "eager"
 
 dataset = load_dataset("Jennny/spolier_classification") 
 
@@ -88,16 +81,16 @@ base_model_name = "meta-llama/Meta-Llama-3-8B-Instruct"  # Update with correct m
 
 bnb_config = BitsAndBytesConfig(
     load_in_4bit=True,
-    bnb_4bit_use_double_quant=False,
     bnb_4bit_quant_type="nf4",
-    bnb_4bit_compute_dtype="float16",
+    bnb_4bit_compute_dtype=torch_dtype,
+    bnb_4bit_use_double_quant=True,
 )
 
 model = AutoModelForCausalLM.from_pretrained(
     base_model_name,
-    torch_dtype="float16",
-    attn_implementation="flash_attention_2",
-    quantization_config=bnb_config, 
+    quantization_config=bnb_config,
+    device_map="auto",
+    attn_implementation=attn_implementation
     token="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"
 )
 
@@ -118,7 +111,8 @@ def predict(test_dataset, model, tokenizer):
         prompt = test_dataset[i]["text"]
         pipe = pipeline(task="text-generation", 
                         model=model, 
-                        tokenizer=tokenizer, 
+                        tokenizer=tokenizer,
+                        device_map="auto",
                         max_new_tokens=2, 
                         temperature=0.1)
         
@@ -201,23 +195,27 @@ modules = find_all_linear_names(model)
 
 output_dir="./models/llama-3-spoiler-classifier"
 
+# LoRA config
 peft_config = LoraConfig(
-    lora_alpha=16,
-    lora_dropout=0,
-    r=64,
+    r=16,
+    lora_alpha=32,
+    lora_dropout=0.05,
     bias="none",
     task_type="CAUSAL_LM",
-    target_modules=modules,
+    target_modules=modules
 )
 
 training_arguments = TrainingArguments(
     output_dir=output_dir,
     num_train_epochs=1,
-    per_device_train_batch_size=1, 
+    per_device_train_batch_size=1,
+    per_device_eval_batch_size=1,
     gradient_accumulation_steps=16,
     gradient_checkpointing=True,
-    deepspeed=script_args.deepspeed,
+    eval_strategy="steps",
+    eval_steps= 10,
     optim="paged_adamw_32bit",
+    logging_strategy="steps",
     logging_steps=10,
     learning_rate=2e-4,
     weight_decay=0.001,
