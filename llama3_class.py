@@ -21,6 +21,7 @@ from transformers import (AutoModelForCausalLM,
                           AutoTokenizer, 
                           BitsAndBytesConfig, 
                           TrainingArguments, 
+                          HfArgumentParser,
                           pipeline, 
                           logging)
 from sklearn.metrics import (accuracy_score, 
