@@ -49,20 +49,20 @@ dataset = load_dataset("Jennny/spolier_classification")
 # eval_data = dataset['validation']
 # test_data = dataset['test']
 
-train_data = dataset['train'].shuffle(seed=42).select(range(1000))
-eval_data = dataset['validation'].shuffle(seed=42).select(range(1000))
-test_data = dataset['test'].shuffle(seed=42).select(range(1000))
+train_data = dataset['train'].shuffle(seed=42).select(range(50))
+eval_data = dataset['validation'].shuffle(seed=42).select(range(50))
+test_data = dataset['test'].shuffle(seed=42).select(range(50))
 
 # Define the prompt generation functions
 def generate_prompt(data_point):
     return f"""
-            Classify the text as having a spoiler or not (true/false).
+            Classify whether the following text contains a spoiler, respond ONLY with "true" or "false".
 text: {data_point["plain_text"]}
 label: {data_point["has_spoiler"]}""".strip()
 
 def generate_test_prompt(data_point):
     return f"""
-            Classify the text as having a spoiler or not (true/false).
+            Classify whether the following text contains a spoiler, respond ONLY with "true" or "false".
 text: {data_point["plain_text"]}
 label: """.strip()
 
@@ -95,8 +95,9 @@ bnb_config = BitsAndBytesConfig(
 
 model = AutoModelForCausalLM.from_pretrained(
     base_model_name,
-    # device_map="auto",
+    device_map="auto",
     torch_dtype="float16",
+    attn_implementation="flash_attention_2",
     quantization_config=bnb_config, 
     token="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"
 ).to("cuda")
@@ -109,7 +110,10 @@ tokenizer.pad_token_id = tokenizer.eos_token_id
 
 def predict(test_dataset, model, tokenizer):
     y_pred = []
+    y_unresolved = []  # Track unresolved predictions
     categories = ["true", "false"]
+    
+    unresolved_prompts = []  # Store prompts that couldn't be resolved
     
     for i in range(len(test_dataset)):
         prompt = test_dataset[i]["text"]
@@ -120,15 +124,45 @@ def predict(test_dataset, model, tokenizer):
                         temperature=0.1)
         
         result = pipe(prompt)
-        answer = result[0]['generated_text'].split("label:")[-1].strip().lower()
+        full_generated_text = result[0]['generated_text']
+        
+        # Extract the part after "label:"
+        try:
+            answer = full_generated_text.split("label:")[-1].strip().lower()
+        except Exception:
+            answer = ""
         
         # Determine the predicted category
+        resolved = False
         for category in categories:
             if category in answer:
                 y_pred.append(category == "true")
+                resolved = True
                 break
-        else:
-            y_pred.append(False)  # default to False if no match
+        
+        # If no category was found
+        if not resolved:
+            y_pred.append(False)  # default to False
+            y_unresolved.append(i)
+            unresolved_prompts.append({
+                'index': i,
+                'prompt': prompt,
+                'full_generated_text': full_generated_text
+            })
+    
+    # Print summary of unresolved predictions
+    print("\nLabel Extraction Analysis:")
+    print(f"Total test examples: {len(test_dataset)}")
+    print(f"Number of unresolved predictions: {len(y_unresolved)}")
+    print(f"Percentage of unresolved predictions: {len(y_unresolved)/len(test_dataset)*100:.2f}%")
+    
+    # Detailed view of some unresolved cases
+    if unresolved_prompts:
+        print("\nSample Unresolved Predictions:")
+        for i, case in enumerate(unresolved_prompts[:5]):  # Show first 5 cases
+            print(f"\nUnresolved Case {i+1}:")
+            print(f"Prompt: {case['prompt']}")
+            print(f"Full Generated Text: {case['full_generated_text']}")
     
     return y_pred
 
@@ -180,12 +214,12 @@ peft_config = LoraConfig(
 training_arguments = TrainingArguments(
     output_dir=output_dir,
     num_train_epochs=1,
-    per_device_train_batch_size=8, 
-    gradient_accumulation_steps=4,
+    per_device_train_batch_size=4, 
+    gradient_accumulation_steps=16,
     gradient_checkpointing=True,
     deepspeed=script_args.deepspeed,
     optim="paged_adamw_32bit",
-    logging_steps=1,
+    logging_steps=10,
     learning_rate=2e-4,
     weight_decay=0.001,
     fp16=True,
