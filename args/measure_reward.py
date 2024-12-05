@@ -22,9 +22,9 @@ import os
 
 os.environ["HF_TOKEN"] = "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"
 
-
 args = parser.parse_args()
 
+print("hello")
 # tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
 rm_tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
 rm_tokenizer.pad_token = rm_tokenizer.eos_token
