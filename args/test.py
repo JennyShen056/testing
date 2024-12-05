@@ -23,7 +23,7 @@ LLM_PATH = "Jennny/llama3_8b_sft_ultrafb"
 RM_PATH = "Jennny/llama3_8b_helpful_rm_full"
 
 # Initialize ARGS class
-searcher = ARGS(llm_path=LLM_PATH, rm_path=RM_PATH, llm_dev="cuda:5", rm_dev="cuda:6")
+searcher = ARGS(llm_path=LLM_PATH, rm_path=RM_PATH)
 
 # Define the chats input
 chats = [

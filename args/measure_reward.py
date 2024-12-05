@@ -82,7 +82,8 @@ def get_rm(text):
     ).replace(rm_tokenizer.bos_token, "")
     inputs = rm_tokenizer(
         input_text, return_tensors="pt", padding=True, truncation=True
-    ).to(args.rm_gpu)
+    )
+
     print(f"{inputs['input_ids'].shape=}")
     if inputs["input_ids"].shape[1] >= 1334:
         return None  # Skip long sequences
@@ -102,7 +103,7 @@ def get_rm(text):
 
 def get_rm_from_tokens(tokens):
     return (
-        rm_model(torch.tensor(tokens).unsqueeze(0).to(args.rm_gpu))
+        rm_model(torch.tensor(tokens).unsqueeze(0))
         .logits.flatten()
         .item()
     )
