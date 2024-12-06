@@ -103,7 +103,13 @@ elif args.dataset == "Jennny/ultrafeedback_binarized_truthfulness_prefs":
     for prompt in test_ds["prompt"]:
         formatted_dataset.append({"content": prompt, "role": "user"})
     test_ds = formatted_dataset
-
+elif args.dataset == "Jennny/ultrafeedback_binarized_honesty_prefs":
+    # FOR ULTRAFEEDBACK_BINARIZED_HONESTY
+    formatted_dataset = []
+    for prompt in test_ds["prompt"]:
+        formatted_dataset.append({"content": prompt, "role": "user"})
+    test_ds = formatted_dataset
+    
 end_idx = int(len(test_ds) * (args.run_percent/100.))
 print(f"[INFO]: {end_idx=}, {len(test_ds)=}")
 
