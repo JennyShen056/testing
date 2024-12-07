@@ -3,165 +3,103 @@ import torch
 from torch.nn import functional as F
 from tqdm import tqdm
 
-# import the huggingface transformers libraries
+# Import the HuggingFace Transformers libraries
 import transformers
-from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSequenceClassification, LlamaForCausalLM, LlamaForSequenceClassification
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForSequenceClassification
 
-#### auto size stuff
+#### Utility Functions
 import numpy as np
 
-import os
-os.environ["HF_TOKEN"] = "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"
-
 def factors(x):
-    return [i for i in range(1,x+1) if x%i==0]
+    return [i for i in range(1, x + 1) if x % i == 0]
 
 def auto_size(seq_len, topk):
-    estimated = (28672/(seq_len*1.5)) -11.52605
-    # hack
+    estimated = (28672 / (seq_len * 1.5)) - 11.52605
     possible_facs = factors(topk)
-    if np.all(~(np.array(possible_facs[::-1]) < estimated)): return 1
+    if np.all(~(np.array(possible_facs[::-1]) < estimated)):
+        return 1
     return possible_facs[::-1][np.argmax(np.array(possible_facs[::-1]) < estimated)]
-###
 
 def create_attention_mask(seq_len, bsz=1):
     return torch.ones((bsz, seq_len))
 
-# From huggingface
-def rcache(past_key_values, beam_idx):
-    reordered_past = ()
-    for layer_past in past_key_values:
-        reordered_past += (
-            tuple(past_state.index_select(0, beam_idx.to(past_state.device)) for past_state in layer_past),
-        )
-    return reordered_past
-
-def even_chunk(data, chunk_size=10):
-    assert data.shape[0] % chunk_size == 0, "chunk_size must evenly divide the topk"
-    for i in range(0, data.shape[0], chunk_size):
-        yield data[i:(i+chunk_size)]
-
-# reward based search
+# Reward-based Search Class
 class ARGS:
-    def __init__(self, llm_path, rm_path, llm_dev="cuda:0", rm_dev="cuda:1", torch_dtype=torch.float16):
-        self.llm_dev = llm_dev
-        self.rm_dev = rm_dev
-
+    def __init__(self, llm_path, rm_path, torch_dtype=torch.float16):
         print("Loading LLM...")
-        self.LLM = AutoModelForCausalLM.from_pretrained(llm_path, torch_dtype=torch_dtype).to(self.llm_dev)
+        self.LLM = AutoModelForCausalLM.from_pretrained(llm_path, torch_dtype=torch_dtype, device_map="auto")
         self.LLM.eval()
 
-        print(f"Loading LLM tokenizer...")
-        # self.llm_tokenizer = AutoTokenizer.from_pretrained(llm_path, token="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")
-        # self.llm_tokenizer.pad_token = self.llm_tokenizer.eos_token
+        print(f"Loading tokenizer...")
+        self.tokenizer = AutoTokenizer.from_pretrained(llm_path)
+        self.tokenizer.pad_token = self.tokenizer.eos_token
 
         print("Loading RM...")
-        self.RM = AutoModelForSequenceClassification.from_pretrained(rm_path, torch_dtype=torch_dtype).to(self.rm_dev)
+        self.RM = AutoModelForSequenceClassification.from_pretrained(rm_path, torch_dtype=torch_dtype, device_map="auto")
         self.RM.eval()
-
-        print(f"Loading RM tokenizer...")
         self.rm_tokenizer = AutoTokenizer.from_pretrained(rm_path)
         self.rm_tokenizer.pad_token = self.rm_tokenizer.eos_token
-        self.llm_tokenizer = self.rm_tokenizer
 
-    def apply_chat_template(self, chat):
-        """
-        Convert the chat into a string using the LLM tokenizer's apply_chat_template method.
-        """
-        return self.llm_tokenizer.apply_chat_template(
-            chat, tokenize=False, add_generation_prompt=False
-        ).replace(self.llm_tokenizer.bos_token, "")
+        self.LLM.gradient_checkpointing_enable()
+        self.RM.gradient_checkpointing_enable()
 
     def get_input_ids(self, prompt: str) -> torch.Tensor:
-        tokens = self.llm_tokenizer(prompt, return_tensors="pt", padding=True, truncation=True).input_ids.to(self.llm_dev)
-        return tokens        
+        input_text = self.tokenizer.apply_chat_template(
+            prompt, add_generation_prompt=True, return_tensors="pt"
+        )
+        return input_text
 
     def tokens_to_text(self, tokens: torch.Tensor) -> List[str]:
-        return self.llm_tokenizer.batch_decode(tokens, skip_special_tokens=True)
-    
-    def generate_greedy_step_large(self, mout, input_ids, pre_screen_beam_width=40, weight=0., rm_cached=None, chunk_size=10, debug=True, _use_cache=True):
+        return self.tokenizer.batch_decode(tokens, skip_special_tokens=True)
+
+    def generate_step(self, mout, input_ids, pre_screen_beam_width=40, weight=0., method="greedy", temperature=0.7, rm_cached=None, debug=True):
+        llm_device = mout.logits.device  # Dynamically determine LLM device
         out_logits = mout.logits[:, -1]
 
         prescreen_logits, prescreen_tokens = torch.topk(out_logits, dim=-1, k=pre_screen_beam_width)
 
-        expanded_tis = torch.unsqueeze(input_ids, 1).repeat(1, pre_screen_beam_width, 1)
+        expanded_tis = torch.unsqueeze(input_ids, 1).repeat(1, pre_screen_beam_width, 1).to(llm_device)
         if debug: print(f"{expanded_tis.shape=}")
 
         to_rm_eval = torch.dstack((expanded_tis, prescreen_tokens))
         if debug: print(f"{to_rm_eval.shape=}")
 
-        if debug: print(f"{out_logits.shape[0] * pre_screen_beam_width=}")
-        flat_trme = to_rm_eval.view(out_logits.shape[0] * pre_screen_beam_width, -1)
+        flat_trme = to_rm_eval.view(out_logits.shape[0] * pre_screen_beam_width, -1).to(llm_device)
         if debug: print(f"{flat_trme.shape=}")
-        
-        new_rm_cached = None
-        current_best_score = None
-        current_best_tokens = None
-        if debug: print(f"{prescreen_logits.flatten().shape=}")
-        for chunk, chunk_logits in zip(even_chunk(flat_trme.to(self.rm_dev), chunk_size), even_chunk(prescreen_logits.flatten(), chunk_size)):
-            pkv = None if not _use_cache else rm_cached
 
-            rm_out = self.RM(**self.LLM.prepare_inputs_for_generation(input_ids=chunk, attention_mask=create_attention_mask(chunk.shape[1], chunk.shape[0]).to(self.rm_dev), past_key_values=pkv, use_cache=True))
-            current_rm_cached = rm_out.past_key_values
-            rewards = rm_out.logits.flatten().to(self.llm_dev)
-            del rm_out
-            if debug: print(f"{rewards=}")
-            if debug: print(f"{rewards.shape=}")
-            new_scores = rewards * weight + chunk_logits
-            if debug: print(f"{new_scores=}")
-            
-            _, top_k_ids = torch.topk(new_scores, dim=-1, k=1)
-            current_score = new_scores[top_k_ids[0]].item()
-            if debug: print(f"{current_score=} {current_best_score=} ")
-            if (current_best_score is None) or (current_score > current_best_score):
-                if debug: print(f"Updated!!")
-                
-                current_best_score = current_score
-                current_best_tokens = chunk.to(self.llm_dev)[top_k_ids]
-                new_rm_cached = self.LLM._reorder_cache(current_rm_cached, top_k_ids.repeat(chunk_size,))
-            
+        rm_device = next(self.RM.parameters()).device  # Dynamically determine RM device
+        rm_inputs = {
+            "input_ids": flat_trme.to(rm_device),
+            "attention_mask": create_attention_mask(flat_trme.shape[1], flat_trme.shape[0]).to(rm_device),
+        }
+
+        rm_out = self.RM(**rm_inputs)
+        rewards = rm_out.logits.flatten().to(llm_device)  # Move rewards back to LLM device
+
+        if debug: print(f"{rewards.shape=}")
+
+        new_scores = rewards * weight + prescreen_logits.flatten().to(llm_device)
         if debug: print(f"{new_scores.shape=}")
-        
-        return current_best_tokens, new_rm_cached
-        
 
-    def generate_step(self, mout, input_ids, pre_screen_beam_width=40, weight=0., method="greedy", temperature=0.7, rm_cached=None, debug=True):
-        out_logits = mout.logits[:, -1]
-        prescreen_logits, prescreen_tokens = torch.topk(out_logits, dim=-1, k=pre_screen_beam_width)
-        expanded_tis = torch.unsqueeze(input_ids, 1).repeat(1, pre_screen_beam_width, 1)
-        to_rm_eval = torch.dstack((expanded_tis, prescreen_tokens))
-        flat_trme = to_rm_eval.view(out_logits.shape[0] * pre_screen_beam_width, -1)
-
-        # Evaluate RM
-        rm_out = self.RM(
-            input_ids=flat_trme.to(self.rm_dev),
-            attention_mask=create_attention_mask(flat_trme.shape[1], flat_trme.shape[0]).to(self.rm_dev)
-        )
-
-        rewards = rm_out.logits.flatten().to(self.llm_dev)
-        del rm_out
-
-        new_scores = rewards * weight + prescreen_logits.flatten()
         if method == "greedy":
             _, top_k_ids = torch.topk(new_scores, dim=-1, k=1)
         elif method == "topk":
-            assert input_ids.shape[0] == 1
+            assert input_ids.shape[0] == 1  # Batch size 1
             new_scores = new_scores / temperature
             scores = F.softmax(new_scores, dim=-1)
             top_k_ids = torch.multinomial(scores, num_samples=1)
         else:
             raise ValueError(f"Invalid method '{method}'")
 
-        return flat_trme[top_k_ids], rm_cached
+        if debug: print(f"{top_k_ids.shape=}")
 
+        return flat_trme[top_k_ids].to(llm_device), None
 
-    def generate(self, chats, weight=0., topk=1, max_new_token=128, method="greedy", temperature=0.7, chunk_size=5, debug=False):
-        """
-        Generate responses based on the provided chats using LLM and RM.
-        """
-        # Prepare input prompt using the chat template
-        prompt = self.apply_chat_template(chats)
+    def generate(self, prompt, weight=0., topk=1, max_new_token=128, method="greedy", temperature=0.7, chunk_size=5, debug=False):
         tokens = self.get_input_ids(prompt)
+        llm_device = next(self.LLM.parameters()).device  # Dynamically determine LLM device
+        tokens = tokens.to(llm_device)
+
         initial_len = tokens.shape[-1]
         if chunk_size == "auto":
             chunk_size = auto_size(initial_len + max_new_token, topk)
@@ -171,97 +109,27 @@ class ARGS:
             print("The sequence of tokens is too long!!! Returning none!")
             return None
 
-        if tokens.shape[-1] > self.RM.config.to_dict().get("max_sequence_length", 2048):
-            print("The sequence of tokens is too long!!! Returning none!")
-            return None
-
         rm_cached = None
         cached = None
 
-        iterator_obj = range(max_new_token)
-        if debug: iterator_obj = tqdm(iterator_obj)
-        for _ in iterator_obj:
+        for _ in range(max_new_token):
             with torch.no_grad():
                 if cached is None:
-                    # Use the first step without prepare_inputs_for_generation
                     mout = self.LLM(
                         input_ids=tokens,
-                        attention_mask=create_attention_mask(tokens.shape[1], tokens.shape[0]).to(self.llm_dev)
+                        attention_mask=create_attention_mask(tokens.shape[1], tokens.shape[0]).to(llm_device),
+                        use_cache=True
                     )
                     cached = mout.past_key_values
                 else:
-                    # Use caching for subsequent steps
                     mout = self.LLM(
-                        input_ids=tokens[:, -1:],
-                        attention_mask=create_attention_mask(1, tokens.shape[0]).to(self.llm_dev),
+                        input_ids=tokens[:, -1:],  # Pass only the last token
+                        attention_mask=torch.ones((tokens.shape[0], 1), device=llm_device),
                         past_key_values=cached,
                         use_cache=True
                     )
                     cached = mout.past_key_values
 
-                tokens, rm_cached = self.generate_step(
-                    mout, tokens, pre_screen_beam_width=topk, weight=weight,
-                    method=method, temperature=temperature, rm_cached=rm_cached, debug=debug
-                )
-                del mout
+                tokens, rm_cached = self.generate_step(mout, tokens, topk, weight, method, temperature, rm_cached, debug)
 
         return tokens
-    # def generate(self, chats, weight=0., topk=1, max_new_token=128, method="greedy", temperature=0.7, chunk_size=5, debug=False):
-    #     """
-    #     Generate responses based on the provided chats using LLM and RM.
-    #     """
-    #     # Prepare input prompt using the chat template
-    #     prompt = self.apply_chat_template(chats)
-    #     tokens = self.get_input_ids(prompt)
-    #     initial_len = tokens.shape[-1]
-    #     if chunk_size == "auto":
-    #         chunk_size = auto_size(initial_len + max_new_token, topk)
-    #         print(f"auto {chunk_size=}, {topk=}, {initial_len=}!")
-
-    #     if tokens.shape[-1] > self.LLM.config.to_dict().get("max_sequence_length", 2048):
-    #         print("The sequence of tokens is too long!!! Returning none!")
-    #         return None
-
-    #     if tokens.shape[-1] > self.RM.config.to_dict().get("max_sequence_length", 2048):
-    #         print("The sequence of tokens is too long!!! Returning none!")
-    #         return None
-
-    #     rm_cached = None
-    #     cached = None
-
-    #     iterator_obj = range(max_new_token)
-    #     if debug: iterator_obj = tqdm(iterator_obj)
-        
-    #     # Track generated token count
-    #     min_generated_tokens = 20  # Highlighted: Minimum token generation threshold
-
-    #     for idx, _ in enumerate(iterator_obj):
-    #         with torch.no_grad():
-    #             if cached is None:
-    #                 # Use the first step without prepare_inputs_for_generation
-    #                 mout = self.LLM(
-    #                     input_ids=tokens,
-    #                     attention_mask=create_attention_mask(tokens.shape[1], tokens.shape[0]).to(self.llm_dev)
-    #                 )
-    #                 cached = mout.past_key_values
-    #             else:
-    #                 # Use caching for subsequent steps
-    #                 mout = self.LLM(
-    #                     input_ids=tokens[:, -1:],
-    #                     attention_mask=create_attention_mask(1, tokens.shape[0]).to(self.llm_dev),
-    #                     past_key_values=cached,
-    #                     use_cache=True
-    #                 )
-    #                 cached = mout.past_key_values
-
-    #             # Dynamically adjust weight if generation cuts off early
-    #             if idx > min_generated_tokens and weight > 0:
-    #                 weight *= 0.9  # Highlighted: Reduce weight dynamically after generating sufficient tokens
-
-    #             tokens, rm_cached = self.generate_step(
-    #                 mout, tokens, pre_screen_beam_width=topk, weight=weight,
-    #                 method=method, temperature=temperature, rm_cached=rm_cached, debug=debug
-    #             )
-    #             del mout
-
-    #     return tokens

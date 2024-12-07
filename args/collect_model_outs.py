@@ -3,22 +3,19 @@ import argparse
 import json
 from pathlib import Path
 from tqdm import tqdm
-from arg import ARGS
 import time
+
+# Import ARGS class
+from arg import ARGS
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dataset", type=str, default="Dahoas/full-hh-rlhf")
 parser.add_argument("--split", type=str, default="test")
 parser.add_argument("--run_percent", type=float, default=100.)
 parser.add_argument("--rm", type=str)
-
 parser.add_argument("--llm", type=str)
 parser.add_argument("--max_new_token", type=int, default=128)
-
-parser.add_argument("--llm_gpu", type=str, default="cuda:0")
-parser.add_argument("--rm_gpu", type=str, default="cuda:1")
-parser.add_argument("--recover", action='store_true', default = False)
-
+parser.add_argument("--recover", action='store_true', default=False)
 parser.add_argument("--config", type=str)
 parser.add_argument("--out_file", type=str)
 
@@ -27,9 +24,8 @@ args = parser.parse_args()
 print(f"{args=}")
 
 if args.recover:
-    print("[INFO]: LOOKS LIKE YOU WANT TO RECOVER SOME RESULTS,")
-    print("[INFO]: MAKE SURE ALL COMMANDLINE ARGS ARE EXACTLY THE SAME!!!")
-    input("PRESS ENTER TO CONTINUE")
+    print("[INFO]: Recover mode activated. Ensure all command-line args are the same!")
+    input("Press ENTER to continue.")
 
 if not (args.max_new_token > 0):
     print("ERROR: Max tokens should be greater than 0!")
@@ -37,105 +33,80 @@ if not (args.max_new_token > 0):
 
 cfg_path = Path(args.config)
 if not cfg_path.exists():
-    print("ERROR: Config doesn't exist!")
+    print("ERROR: Config file does not exist!")
     exit(1)
-    
+
 out_path = Path(args.out_file + f"_0.jsonl")
-if out_path.exists() and (not args.recover):
-    print("ERROR: out_path already exists!")
+if out_path.exists() and not args.recover:
+    print("ERROR: Output file already exists!")
     exit(1)
 
 if not out_path.exists() and args.recover:
-    print("ERROR: out_path DOESN'T exist!")
+    print("ERROR: Output file does not exist for recovery!")
     exit(1)
 
 with open(cfg_path) as f:
     run_configs = [json.loads(line) for line in f.readlines()]
-    
-# validate configs
+
+# Validate configs
 for run_config in run_configs:
-    if "rm_weight" not in run_config:
-        print(f"Missing key 'rm_weight' in {run_config=}")
-        exit(1)
-    elif "topk" not in run_config:
-        print(f"Missing key 'topk' in {run_config=}")
-        exit(1)
-    elif "mode" not in run_config:
-        print(f"Missing key 'mode' in {run_config=}")
-        exit(1)
-    elif "sample_temp" not in run_config:
-        print(f"Missing key 'sample_temp' in {run_config=}")
+    required_keys = ["rm_weight", "topk", "mode", "sample_temp"]
+    missing_keys = [key for key in required_keys if key not in run_config]
+    if missing_keys:
+        print(f"Missing keys {missing_keys} in {run_config=}")
         exit(1)
 
 print(f"[INFO]: Loaded {len(run_configs)} run configs.")
 print(f"[DEBUG]: {run_configs=}")
-    
+
 print(f"[INFO]: Loading dataset ({args.dataset=}, {args.split=})")
 test_ds = load_dataset(args.dataset, split=args.split)
 if args.dataset == "Dahoas/full-hh-rlhf":
-    # FOR HHRLHF
     test_ds = test_ds["prompt"]
 elif args.dataset == "stanfordnlp/SHP":
-    # FOR SHP
     unique_prompts = []
     seen_posts = set()
-    for post_id, histr in zip(test_ds["post_id"], test_ds['history']):
-        if post_id in seen_posts: continue
-        model_prompt = " Human: " + histr + " Assistant: "
+    for post_id, history in zip(test_ds["post_id"], test_ds['history']):
+        if post_id in seen_posts:
+            continue
+        model_prompt = " Human: " + history + " Assistant: "
         unique_prompts.append(model_prompt)
         seen_posts.add(post_id)
     test_ds = unique_prompts
-elif args.dataset == "allenai/ultrafeedback_binarized_cleaned":
-    # FOR ULTRAFEEDBACK_BINARIZED_CLEANED
-    formatted_dataset = []
-    for prompt in test_ds["prompt"]:
-        formatted_dataset.append({"content": prompt, "role": "user"})
+elif args.dataset in [
+    "allenai/ultrafeedback_binarized_cleaned",
+    "Jennny/ultrafeedback_binarized_helpfulness_prefs",
+    "Jennny/ultrafeedback_binarized_truthfulness_prefs",
+    "Jennny/ultrafeedback_binarized_honesty_prefs",
+]:
+    formatted_dataset = [{"content": prompt, "role": "user"} for prompt in test_ds["prompt"]]
     test_ds = formatted_dataset
-elif args.dataset == "Jennny/ultrafeedback_binarized_helpfulness_prefs":
-    # FOR ULTRAFEEDBACK_BINARIZED_HELPFUL
-    formatted_dataset = []
-    for prompt in test_ds["prompt"]:
-        formatted_dataset.append({"content": prompt, "role": "user"})
-    test_ds = formatted_dataset
-elif args.dataset == "Jennny/ultrafeedback_binarized_truthfulness_prefs":
-    # FOR ULTRAFEEDBACK_BINARIZED_TRUTH
-    formatted_dataset = []
-    for prompt in test_ds["prompt"]:
-        formatted_dataset.append({"content": prompt, "role": "user"})
-    test_ds = formatted_dataset
-elif args.dataset == "Jennny/ultrafeedback_binarized_honesty_prefs":
-    # FOR ULTRAFEEDBACK_BINARIZED_HONESTY
-    formatted_dataset = []
-    for prompt in test_ds["prompt"]:
-        formatted_dataset.append({"content": prompt, "role": "user"})
-    test_ds = formatted_dataset
-    
-end_idx = int(len(test_ds) * (args.run_percent/100.))
+
+end_idx = int(len(test_ds) * (args.run_percent / 100.))
 print(f"[INFO]: {end_idx=}, {len(test_ds)=}")
 
 truncated_ds = test_ds[0:end_idx]
 print(f"{len(truncated_ds)=}")
 
+# **Changes Below: Adjust ARGS initialization**
 print(f"[INFO]: Loading models ({args.llm=}, {args.rm=})")
-search = ARGS(llm_path=args.llm, rm_path=args.rm, llm_dev=args.llm_gpu, rm_dev=args.rm_gpu)
-print(f"[INFO]: Done")
+search = ARGS(llm_path=args.llm, rm_path=args.rm)  # Device handling is now dynamic
+print(f"[INFO]: Models loaded successfully.")
 
-
-def runprompt(ds_row, rm_weight=0., topk=5, new_token=24, mode="p_sigmoid_mixing", sample_temp=None, llm_dev:str="cuda:0") -> str:
+def runprompt(ds_row, rm_weight=0., topk=5, new_token=24, mode="p_sigmoid_mixing", sample_temp=None) -> str:
     chat = [{"content": ds_row["content"], "role": "user"}]
-    
+
+    # **Change:** `search.generate` now dynamically handles device placement
     tokens = search.generate(chat, method=mode, topk=topk, max_new_token=new_token, weight=rm_weight, debug=False)
 
-    # too long seqlen
-    if tokens == None: return None, None
-    
+    if tokens is None:
+        return None, None  # Handle sequence length too long
+
     raw_tokens = tokens[0].detach().cpu().numpy().tolist()
     tokens_text = search.tokens_to_text(tokens)[0]
     del tokens
 
-    tokens_text_np = tokens_text.split("assistant\n\n", 1)[-1]  # Split and take the part after "assistant\n\n"
-
-    # tokens_text_np = tokens_text.removeprefix(prompt)
+    tokens_text_np = tokens_text.split("assistant\n\n", 1)[-1]  # Process response text
     return tokens_text_np, raw_tokens
 
 
@@ -149,34 +120,42 @@ for config_num, run_config in enumerate(run_configs):
         samples = resfile.readlines()
 
         if samples[-1] != "":
-            print("last line not empty??")
+            print("Last line not empty? Exiting.")
             exit(1)
-        
+
         last_obj = json.loads(samples[-2])
-        if last_obj["prompt"] != truncated_ds[len(samples) -1]:
-            print(f"[INFO]: PROMPTS DID NOT MATCH RECOVERY FAILED!!!")
+        if last_obj["prompt"] != truncated_ds[len(samples) - 1]:
+            print(f"[INFO]: Prompts did not match. Recovery failed!")
             exit(1)
 
     for idx, ds_row in enumerate(tqdm(truncated_ds)):
-        if args.recover and (idx <= len(samples) -1):
-            print(f"[INFO]: SKIPPING {idx}")
+        if args.recover and idx <= len(samples) - 1:
+            print(f"[INFO]: Skipping {idx}")
             continue
 
         print(f"{ds_row=}")
-        current_prompt = ds_row #["prompt"]
+        current_prompt = ds_row
         start = time.time()
-        res, tokens = runprompt(current_prompt, float(run_config["rm_weight"]), run_config["topk"], args.max_new_token, run_config["mode"], run_config["sample_temp"], llm_dev=args.llm_gpu)
-        if tokens == None:
+
+        # **Change:** Align `runprompt` with updated `search.generate`
+        res, tokens = runprompt(
+            current_prompt,
+            float(run_config["rm_weight"]),
+            run_config["topk"],
+            args.max_new_token,
+            run_config["mode"],
+            run_config["sample_temp"],
+        )
+
+        if tokens is None:
             print("Too long, skipped")
             continue
 
-        elapsed = time.time() -start
-
-        # data.append({"prompt": current_prompt, "result": res, "response": current_prompt + res, "elapsed":elapsed, "method": args.out_file + f"_{config_num}"})
+        elapsed = time.time() - start
         data.append({
-            "prompt": current_prompt["content"],  # Extract the actual prompt text
+            "prompt": current_prompt["content"],
             "result": current_prompt["content"] + res,
-            "response": res,  # Concatenate the prompt content with the response
+            "response": res,
             "elapsed": elapsed,
             "method": args.out_file + f"_{config_num}"
         })
@@ -184,4 +163,3 @@ for config_num, run_config in enumerate(run_configs):
         print(f"[DEBUG]: {elapsed=} {len(current_prompt)=} {current_prompt=}, {res=}")
         with open(Path(args.out_file + f"_{config_num}.jsonl"), "w") as outfile:
             json.dump(data, outfile, ensure_ascii=False)
-
