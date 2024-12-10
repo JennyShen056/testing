@@ -16,7 +16,7 @@
 # print(tokens_text)
 
 
-from arg_updated import ARGS
+from arg import ARGS
 
 # Define model paths
 LLM_PATH = "Jennny/llama3_8b_sft_ultrafb"
@@ -27,7 +27,7 @@ searcher = ARGS(llm_path=LLM_PATH, rm_path=RM_PATH)
 
 # Define the chats input
 chats = [
-{ "content": "My son is struggling to learn how to do addition. How can I teach him?", "role": "user" }]
+{ "content": "what is passive radar? Is there any open source initiative to this project?", "role": "user" }]
 
 
 print("aligned response:")
