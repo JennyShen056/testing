@@ -78,6 +78,7 @@ elif args.dataset in [
     "Jennny/ultrafeedback_binarized_helpfulness_prefs",
     "Jennny/ultrafeedback_binarized_truthfulness_prefs",
     "Jennny/ultrafeedback_binarized_honesty_prefs",
+    "Jennny/randomized_ultrafeedback_prefs",
 ]:
     formatted_dataset = [{"content": prompt, "role": "user"} for prompt in test_ds["prompt"]]
     test_ds = formatted_dataset
