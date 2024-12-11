@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 # Load the output JSON data
-with open("run_outs/honest_wt_0_5_0.jsonl", "r") as infile:
+with open("run_outs/truth_wt_0_5_0.jsonl", "r") as infile:
     data = json.load(infile)
 
 # Transform the data to the required format
@@ -17,7 +17,7 @@ for entry in data:
     )
 
 # Save the transformed data to the desired output path
-output_path = Path("outputs/honest_wt_0_5_0.jsonl")
+output_path = Path("outputs/truth_wt_0_5_0.jsonl")
 output_path.parent.mkdir(
     parents=True, exist_ok=True
 )  # Ensure the output directory exists
