@@ -68,20 +68,22 @@ chats = [
     }
 ]
 
-print("aligned response:")
-
-# Generate output using args-greedy decoding with dual reward models
-output_tokens = searcher.generate(chats, topk=10, weight1=1, weight2=0.5, method="greedy")
-
-# Convert tokens to text and print the result
-tokens_text = searcher.tokens_to_text(output_tokens)[0]
-print(tokens_text)
-
 print("vanilla response:")
-
 output_tokens_origin = searcher.generate(chats, topk=10, weight1=0, weight2=0, method="greedy")
-
 # Convert tokens to text and print the result
 tokens_text_origin = searcher.tokens_to_text(output_tokens_origin)[0]
 print(tokens_text_origin)
 
+print("aligned response honest = 0.2, helpful = 0.8:")
+# Generate output using args-greedy decoding with dual reward models
+output_tokens = searcher.generate(chats, topk=10, weight1=0.2, weight2=0.8, method="greedy")
+# Convert tokens to text and print the result
+tokens_text = searcher.tokens_to_text(output_tokens)[0]
+print(tokens_text)
+
+print("aligned response honest = 0.8, helpful = 0.2:")
+# Generate output using args-greedy decoding with dual reward models
+output_tokens = searcher.generate(chats, topk=10, weight1=0.8, weight2=0.2, method="greedy")
+# Convert tokens to text and print the result
+tokens_text = searcher.tokens_to_text(output_tokens)[0]
+print(tokens_text)

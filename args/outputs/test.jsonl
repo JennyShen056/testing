@@ -1,0 +1,6 @@
+[
+    {
+        "prompt": "kafka listener listens on which thread",
+        "response": "The Kafka listener typically listens on a dedicated, non-blocking, and multi-threaded network socket that is managed and maintained by the Kafka broker's network layer. The listener is usually implemented using an asynchronous socket-based networking library or an embedded networking protocol stack to handle client connections and message processing in an efficient and scalable manner.\n\nThe listener is often implemented using an event-driven or non-blocking I/O model to avoid the potential for thread-blocking or resource-constrained scenarios. This design helps to prevent the Kafka broker from being a potential performance bottleneck or a single-point-of-failure in the Kafka distributed streaming and messaging system's overall architecture and scalability."
+    }
+]
